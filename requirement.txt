@@ -1,0 +1,10 @@
+PyMuPDF
+opencv-python
+layoutparser
+torch 
+torchvision 
+torchaudio
+timm
+frontend
+starlette
+shapely
