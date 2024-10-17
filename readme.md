@@ -19,3 +19,7 @@ pip install -r requirement.txt
 ```bash
 bash main.sh "YOUR PDF DOCUMENT FILE PATH"
 ```
+
+## Result
+
+Check "figures" and "tables" folders for the images, output_images for the original pdf pages, and output_visualizations for the segmentations.
