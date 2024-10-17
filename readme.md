@@ -22,4 +22,12 @@ bash main.sh "YOUR PDF DOCUMENT FILE PATH"
 
 ## Result
 
-Check "figures" and "tables" folders for the images, output_images for the original pdf pages, and output_visualizations for the segmentations.
+After running the script, the following directories will contain the generated output:
+
+- **`figures/`**: Contains the figures extracted from the PDF.
+- **`tables/`**: Contains the tables extracted from the PDF.
+- **`output_images/`**: Stores the images of the original PDF pages.
+- **`output_visualizations/`**: Contains the visualizations, such as segmentation results.
+
+Check these folders for the converted images and visual outputs.
+
