@@ -31,10 +31,10 @@ echo "PDF conversion completed."
 
 # Step 2: Run object detection inference
 echo "Running object detection inference..."
-python ./unilm/dit/object_detection/inference.py \
+python object_detection/inference.py \
   --image_folder output_images \
   --output_folder output_visualizations \
-  --config-file ./unilm/dit/object_detection/publaynet_configs/maskrcnn/maskrcnn_dit_base.yaml \
+  --config-file object_detection/publaynet_configs/maskrcnn/maskrcnn_dit_base.yaml \
   --opts MODEL.WEIGHTS publaynet_dit-b_mrcnn.pth
 if [ $? -ne 0 ]; then
   echo "Error: Object detection inference failed."
