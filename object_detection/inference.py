@@ -1,6 +1,7 @@
 import argparse
 import os
 import glob
+from ultralytics import YOLO
 
 import cv2
 from ditod import add_vit_config
@@ -9,7 +10,15 @@ from detectron2.config import get_cfg
 from detectron2.utils.visualizer import ColorMode, Visualizer
 from detectron2.data import MetadataCatalog
 from detectron2.engine import DefaultPredictor
+import shutil  # Import shutil to use rmtree
 
+def check_and_create_folder(path):
+    if os.path.exists(path):
+        # Remove the entire directory tree
+        shutil.rmtree(path)
+    # Create the empty folder
+    os.makedirs(path)
+    
 def main():
     parser = argparse.ArgumentParser(description="Detectron2 batch inference script")
     parser.add_argument(
@@ -19,16 +28,16 @@ def main():
         required=True,
     )
     parser.add_argument(
-        "--output_folder",
-        help="Directory to save output visualizations (optional)",
-        type=str,
-        default=None,
-    )
-    parser.add_argument(
         "--config-file",
         default="configs/quick_schedules/mask_rcnn_R_50_FPN_inference_acc_test.yaml",
         metavar="FILE",
         help="Path to config file",
+    )
+    parser.add_argument(
+        "--output_folder",
+        help="Root folder to store outputs",
+        type=str,
+        required=True,
     )
     parser.add_argument(
         "--opts",
@@ -38,22 +47,20 @@ def main():
     )
     args = parser.parse_args()
 
-    # Step 1: Instantiate config
+    # Instantiate configuration
     cfg = get_cfg()
     add_vit_config(cfg)
     cfg.merge_from_file(args.config_file)
-    
-    # Step 2: Add model weights URL to config
     cfg.merge_from_list(args.opts)
     
-    # Step 3: Set device
+    # Set device
     device = "cuda" if torch.cuda.is_available() else "cpu"
     cfg.MODEL.DEVICE = device
 
-    # Step 4: Define model
+    # Define model
     predictor = DefaultPredictor(cfg)
     
-    # Step 5: Prepare metadata
+    # Prepare metadata
     md = MetadataCatalog.get(cfg.DATASETS.TEST[0])
     if cfg.DATASETS.TEST[0] == 'icdar2019_test':
         md.set(thing_classes=["table"])
@@ -65,13 +72,13 @@ def main():
         print("No class names found in metadata.")
         return
 
-    # Step 6: Create output directories if they don't exist
-    os.makedirs('tables', exist_ok=True)
-    os.makedirs('figures', exist_ok=True)
-    if args.output_folder:
-        os.makedirs(args.output_folder, exist_ok=True)
+    # Ensure the root output directory is empty
+    check_and_create_folder(args.output_folder)
 
-    # Step 7: Process each image in the folder
+    # Initialize YOLO model
+    model = YOLO('img_to_eqt/runs/detect/train9/weights/best.pt')
+        
+    # Process each image in the folder
     image_extensions = ['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.tiff']
     image_paths = []
     for ext in image_extensions:
@@ -88,48 +95,48 @@ def main():
             print(f"Failed to read image {image_path}")
             continue
 
-        # Run inference
+        # Create a separate folder for each page under the root output folder
+        base_filename = os.path.splitext(os.path.basename(image_path))[0]
+        page_output_folder = os.path.join(args.output_folder, base_filename)
+        check_and_create_folder(page_output_folder)  # Ensure the page folder is empty
+
+        # YOLO Inference
+        yolo_result = model(image_path)
+        
+        # Save YOLO detected images (equations) into the page's folder
+        for idx, result in enumerate(yolo_result[0].boxes):
+            x1, y1, x2, y2 = map(int, result.xyxy[0])
+            cropped_image = img[y1:y2, x1:x2]
+            cropped_image_path = os.path.join(page_output_folder, f'eqt_image_{idx}.png')
+            cv2.imwrite(cropped_image_path, cropped_image)
+
+        # Run Detectron2 inference
         outputs = predictor(img)
         predictions = outputs["instances"].to("cpu")
+        
+        # Optional: Save overall visualization to the page's folder
+        # v = Visualizer(img[:, :, ::-1], md, scale=1.0, instance_mode=ColorMode.SEGMENTATION)
+        # result = v.draw_instance_predictions(predictions)
+        # result_image = result.get_image()[:, :, ::-1]
+        # output_visualization_path = os.path.join(page_output_folder, f"{base_filename}_vis.png")
+        # cv2.imwrite(output_visualization_path, result_image)
+        # print(f"Saved visualization to {output_visualization_path}")
+        
+        score = predictions.scores
 
-        # Optional: Save overall visualization
-        if args.output_folder:
-            v = Visualizer(img[:, :, ::-1],
-                           md,
-                           scale=1.0,
-                           instance_mode=ColorMode.SEGMENTATION)
-            result = v.draw_instance_predictions(predictions)
-            result_image = result.get_image()[:, :, ::-1]
-            base_filename = os.path.splitext(os.path.basename(image_path))[0]
-            output_visualization_path = os.path.join(args.output_folder, f"{base_filename}_vis.png")
-            cv2.imwrite(output_visualization_path, result_image)
-            print(f"Saved visualization to {output_visualization_path}")
-
-        # Extract and save tables and figures
+        # Extract and save tables and figures into the page's folder
         for idx, (box, pred_class) in enumerate(zip(predictions.pred_boxes, predictions.pred_classes)):
             class_name = class_names[pred_class]
-            # Only process tables and figures
-            if class_name in ["table", "figure"]:
-                # Convert tensor to numpy array and get coordinates
+            # Only process tables and figures with a high confidence score
+            if class_name in ["table", "figure"] and score[idx] > 0.90:
                 bbox = box.numpy().astype(int)
                 x0, y0, x1, y1 = bbox
-                # Ensure coordinates are within image boundaries
-                x0 = max(0, x0)
-                y0 = max(0, y0)
-                x1 = min(img.shape[1], x1)
-                y1 = min(img.shape[0], y1)
-                # Crop the image
+                x0, y0 = max(0, x0), max(0, y0)
+                x1, y1 = min(img.shape[1], x1), min(img.shape[0], y1)
                 cropped_img = img[y0:y1, x0:x1]
-                # Determine the output directory
-                output_dir = 'tables' if class_name == 'table' else 'figures'
-                # Create a unique filename
-                base_filename = os.path.splitext(os.path.basename(image_path))[0]
-                output_filename = os.path.join(output_dir, f"{base_filename}_{class_name}_{idx}.png")
-                # Save the cropped image
+                output_filename = os.path.join(page_output_folder, f"{class_name}_{idx}.png")
                 cv2.imwrite(output_filename, cropped_img)
                 print(f"Saved {class_name} to {output_filename}")
 
 if __name__ == '__main__':
     main()
-
-

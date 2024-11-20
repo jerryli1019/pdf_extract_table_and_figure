@@ -22,7 +22,7 @@ fi
 
 # Step 1: Convert PDF to images
 echo "Converting PDF to images..."
-python3 pdf2img.py --pdf_path "$PDF_PATH"
+python3 pdf_to_pages.py --pdf_path "$PDF_PATH"
 if [ $? -ne 0 ]; then
   echo "Error: Failed to convert PDF to images."
   exit 1
@@ -32,14 +32,22 @@ echo "PDF conversion completed."
 # Step 2: Run object detection inference
 echo "Running object detection inference..."
 python object_detection/inference.py \
-  --image_folder output_images \
+  --image_folder output_pages \
   --output_folder output_visualizations \
   --config-file object_detection/publaynet_configs/maskrcnn/maskrcnn_dit_base.yaml \
-  --opts MODEL.WEIGHTS publaynet_dit-b_mrcnn.pth
+  --opts MODEL.WEIGHTS img_table_fig_weight/publaynet_dit-b_mrcnn.pth
 if [ $? -ne 0 ]; then
   echo "Error: Object detection inference failed."
   exit 1
 fi
 echo "Object detection inference completed."
+
+echo "Running PPT generation..."
+python img_to_ppt.py 
+if [ $? -ne 0 ]; then
+  echo "Error: Object detection inference failed."
+  exit 1
+fi
+echo "PPT generation completed."
 
 echo "Processing completed successfully."
